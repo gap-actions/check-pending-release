@@ -1,0 +1,72 @@
+---
+name: CI
+
+# Trigger the workflow on push to main, or on pull request
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scenario: unreleased-changes
+            expected: 'true'
+          - scenario: ignored-changes-only
+            expected: 'false'
+          - scenario: no-tags
+            expected: 'true'
+          - scenario: nothing-since-tag
+            expected: 'false'
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: this-action/
+
+      # The action inspects the repository it is run in, so each scenario is a
+      # throwaway repository created in the workspace root.
+      - name: "Create test repository"
+        run: |
+          git init -q -b main .
+          git config user.name "Test"
+          git config user.email "test@example.com"
+
+          mkdir -p src .github/workflows
+          echo "1" > src/foo.c
+          git add src/foo.c
+          git commit -q -m "Initial commit"
+
+          case "${{ matrix.scenario }}" in
+            no-tags)
+              ;;
+            nothing-since-tag)
+              git tag v1.0.0
+              ;;
+            unreleased-changes)
+              git tag v1.0.0
+              echo "2" > src/foo.c
+              git commit -q -am "Change source"
+              ;;
+            ignored-changes-only)
+              git tag v1.0.0
+              echo "on: push" > .github/workflows/CI.yml
+              git add .github
+              git commit -q -m "Change CI"
+              ;;
+          esac
+
+      - id: check
+        uses: ./this-action/
+
+      - name: "Verify outputs"
+        run: |
+          if [[ "${{ steps.check.outputs.pending }}" != "${{ matrix.expected }}" ]]; then
+            echo "::error::Expected pending=${{ matrix.expected }}, got '${{ steps.check.outputs.pending }}'"
+            exit 1
+          fi

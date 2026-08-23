@@ -1,0 +1,34 @@
+---
+name: "Check for a pending GAP package release"
+description: "Checks whether the repository has commits that are not part of any release yet"
+inputs:
+  ignore:
+    description: "Newline- or comma-separated list of path prefixes whose changes do not warrant a release"
+    required: false
+    default: |
+      .github
+      .gitignore
+outputs:
+  pending:
+    description: "'true' if there are unreleased changes, 'false' otherwise"
+    value: ${{ steps.check.outputs.pending }}
+  since-tag:
+    description: "The most recent tag the check compared against, empty if the repository has no tags"
+    value: ${{ steps.check.outputs.since-tag }}
+  files:
+    description: "Newline-separated list of files changed since that tag, ignored paths removed"
+    value: ${{ steps.check.outputs.files }}
+  commits:
+    description: "Number of commits since that tag, 0 if there is no pending release"
+    value: ${{ steps.check.outputs.commits }}
+  age-days:
+    description: "Age of that tag in days, 0 if the repository has no tags"
+    value: ${{ steps.check.outputs.age-days }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Check for unreleased changes"
+      id: check
+      shell: bash
+      run: $GITHUB_ACTION_PATH/scripts/check_pending_release.sh "${{ inputs.ignore }}"

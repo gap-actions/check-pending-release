@@ -1,0 +1,127 @@
+---
+name: "Check for pending release"
+
+# Reusable workflow: detects unreleased changes and tracks them in a single
+# GitHub issue, which is reopened/updated while changes are pending and closed
+# once a release has been made.
+#
+#   caller repo ---> reusable.yml ---> check-pending-release action
+#   (schedule)       (notification)    (detection)
+
+on:
+  workflow_call:
+    inputs:
+      ignore:
+        description: "Newline- or comma-separated list of path prefixes whose changes do not warrant a release"
+        type: string
+        required: false
+        default: |
+          .github
+          .gitignore
+      issue-title:
+        description: "Title of the tracking issue"
+        type: string
+        required: false
+        default: "Pending release"
+      issue-label:
+        description: "Label used to find the tracking issue again; created if missing"
+        type: string
+        required: false
+        default: "pending release"
+      max-files:
+        description: "Maximum number of changed files to list in the issue"
+        type: number
+        required: false
+        default: 50
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # the check needs the full history and all tags
+          fetch-depth: 0
+
+      - id: check
+        uses: gap-actions/check-pending-release@v1
+        with:
+          ignore: ${{ inputs.ignore }}
+
+      - name: "Open, update or close the tracking issue"
+        uses: actions/github-script@v8
+        env:
+          PENDING: ${{ steps.check.outputs.pending }}
+          SINCE_TAG: ${{ steps.check.outputs.since-tag }}
+          COMMITS: ${{ steps.check.outputs.commits }}
+          AGE_DAYS: ${{ steps.check.outputs.age-days }}
+          FILES: ${{ steps.check.outputs.files }}
+          ISSUE_TITLE: ${{ inputs.issue-title }}
+          ISSUE_LABEL: ${{ inputs.issue-label }}
+          MAX_FILES: ${{ inputs.max-files }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const label = process.env.ISSUE_LABEL;
+            const pending = process.env.PENDING === 'true';
+
+            // The label identifies our own issue, so we never open a second one.
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner, repo, state: 'open', labels: label, per_page: 1,
+            });
+            const issue = issues[0];
+
+            if (!pending) {
+              if (issue) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: issue.number,
+                  body: `All changes are released as of \`${process.env.SINCE_TAG}\`. Closing.`,
+                });
+                await github.rest.issues.update({
+                  owner, repo, issue_number: issue.number, state: 'closed',
+                });
+              }
+              return;
+            }
+
+            const tag = process.env.SINCE_TAG;
+            const files = process.env.FILES.split('\n').filter(Boolean);
+            const maxFiles = Number(process.env.MAX_FILES);
+            const shown = files.slice(0, maxFiles);
+            const omitted = files.length - shown.length;
+
+            const summary = tag
+              ? `The last release was \`${tag}\`, ${process.env.AGE_DAYS} days ago. Since then ` +
+                `${process.env.COMMITS} commit(s) changed ${files.length} file(s):`
+              : `This repository has no tags, so nothing was ever released. ` +
+                `It contains ${files.length} file(s):`;
+
+            const body = [
+              summary,
+              '',
+              '```',
+              ...shown,
+              ...(omitted > 0 ? [`... and ${omitted} more`] : []),
+              '```',
+              '',
+              'Please make a release, or close this issue if the changes do not warrant one.',
+              'Paths that should never trigger this check can be added to the `ignore`',
+              'input of the workflow in `.github/workflows/`.',
+              '',
+              `<sub>Reported by [check-pending-release](https://github.com/gap-actions/check-pending-release) on ${new Date().toISOString().slice(0, 10)}.</sub>`,
+            ].join('\n');
+
+            if (issue) {
+              await github.rest.issues.update({
+                owner, repo, issue_number: issue.number, body,
+              });
+              return;
+            }
+
+            await github.rest.issues.create({
+              owner, repo, title: process.env.ISSUE_TITLE, body, labels: [label],
+            });
