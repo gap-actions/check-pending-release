@@ -53,7 +53,7 @@ jobs:
           ignore: ${{ inputs.ignore }}
 
       - name: "Open, update or close the tracking issue"
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           PENDING: ${{ steps.check.outputs.pending }}
           SINCE_TAG: ${{ steps.check.outputs.since-tag }}
