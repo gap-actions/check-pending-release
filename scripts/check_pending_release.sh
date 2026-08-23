@@ -10,7 +10,10 @@
 # e.g. ".github" also ignores ".github/workflows/CI.yml".
 #
 # Results are reported via $GITHUB_OUTPUT (pending, since-tag, files, commits,
-# age-days) and summarized in $GITHUB_STEP_SUMMARY.
+# age-days, pending-since-days) and summarized in $GITHUB_STEP_SUMMARY.
+#
+# Whether a given age warrants a notification is policy and thus left to the
+# caller; this script only reports the facts.
 
 set -euo pipefail
 
@@ -18,6 +21,9 @@ GITHUB_OUTPUT=${GITHUB_OUTPUT:-/dev/stdout}
 GITHUB_STEP_SUMMARY=${GITHUB_STEP_SUMMARY:-/dev/null}
 
 SECONDS_PER_DAY=86400
+
+# Prefix distinguishing commit timestamps from file names in `git log` output.
+COMMIT_MARKER="__COMMIT__ "
 
 # Write a single-line output value.
 set_output() {
@@ -53,6 +59,24 @@ is_ignored() {
     return 1
 }
 
+# Age in days of the oldest commit in the given range that touches a file
+# outside the ignore list, i.e. how long changes have been waiting for a
+# release. Empty if there is no such commit.
+pending_age_days() {
+    local timestamp="" line
+    while IFS= read -r line; do
+        if [[ $line == "$COMMIT_MARKER"* ]]; then
+            timestamp=${line#"$COMMIT_MARKER"}
+            continue
+        fi
+        [[ -z $line ]] && continue
+        is_ignored "$line" && continue
+
+        echo $(( ( $(date +%s) - timestamp ) / SECONDS_PER_DAY ))
+        return
+    done < <(git -c core.quotePath=false log --reverse --format="${COMMIT_MARKER}%ct" --name-only "$@")
+}
+
 TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
 
 # Without any tag nothing was ever released, so every tracked file counts as
@@ -79,8 +103,18 @@ else
 fi
 
 COMMITS=0
-if [[ $PENDING == true && -n $TAG ]]; then
-    COMMITS=$(git rev-list --count "$TAG..HEAD")
+PENDING_SINCE_DAYS=0
+if [[ $PENDING == true ]]; then
+    if [[ -n $TAG ]]; then
+        COMMITS=$(git rev-list --count "$TAG..HEAD")
+        PENDING_SINCE_DAYS=$(pending_age_days "$TAG..HEAD")
+    else
+        PENDING_SINCE_DAYS=$(pending_age_days HEAD)
+    fi
+
+    # `git log --name-only` skips merge commits, so fall back to the tag age
+    # in the rare case that only a merge introduced the pending changes.
+    PENDING_SINCE_DAYS=${PENDING_SINCE_DAYS:-$AGE_DAYS}
 fi
 
 FILE_LIST=$(printf '%s\n' ${FILES+"${FILES[@]}"})
@@ -89,6 +123,7 @@ set_output pending "$PENDING"
 set_output since-tag "$TAG"
 set_output commits "$COMMITS"
 set_output age-days "$AGE_DAYS"
+set_output pending-since-days "$PENDING_SINCE_DAYS"
 set_multiline_output files "$FILE_LIST"
 
 {
@@ -97,7 +132,8 @@ set_multiline_output files "$FILE_LIST"
     elif [[ -z $TAG ]]; then
         echo "Pending release: this repository has no tags at all."
     else
-        echo "Pending release: $COMMITS commit(s) since \`$TAG\` ($AGE_DAYS days ago)."
+        echo "Pending release: $COMMITS commit(s) since \`$TAG\` ($AGE_DAYS days ago),"
+        echo "the oldest of them $PENDING_SINCE_DAYS days old."
     fi
     if [[ $PENDING == true ]]; then
         echo

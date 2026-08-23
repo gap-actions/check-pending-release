@@ -17,12 +17,19 @@ jobs:
         include:
           - scenario: unreleased-changes
             expected: 'true'
+            expected-age: '0'
+          - scenario: old-unreleased-changes
+            expected: 'true'
+            expected-age: '10'
           - scenario: ignored-changes-only
             expected: 'false'
+            expected-age: '0'
           - scenario: no-tags
             expected: 'true'
+            expected-age: '30'
           - scenario: nothing-since-tag
             expected: 'false'
+            expected-age: '0'
 
     steps:
       - uses: actions/checkout@v7
@@ -37,10 +44,16 @@ jobs:
           git config user.name "Test"
           git config user.email "test@example.com"
 
+          # Backdate the initial commit, so that scenarios can check the
+          # reported age of unreleased changes.
+          export GIT_AUTHOR_DATE="$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          export GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE"
+
           mkdir -p src .github/workflows
           echo "1" > src/foo.c
           git add src/foo.c
           git commit -q -m "Initial commit"
+          unset GIT_AUTHOR_DATE GIT_COMMITTER_DATE
 
           case "${{ matrix.scenario }}" in
             no-tags)
@@ -52,6 +65,14 @@ jobs:
               git tag v1.0.0
               echo "2" > src/foo.c
               git commit -q -am "Change source"
+              ;;
+            old-unreleased-changes)
+              git tag v1.0.0
+              echo "2" > src/foo.c
+              export GIT_AUTHOR_DATE="$(date -u -d '10 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+              export GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE"
+              git commit -q -am "Change source"
+              unset GIT_AUTHOR_DATE GIT_COMMITTER_DATE
               ;;
             ignored-changes-only)
               git tag v1.0.0
@@ -68,5 +89,9 @@ jobs:
         run: |
           if [[ "${{ steps.check.outputs.pending }}" != "${{ matrix.expected }}" ]]; then
             echo "::error::Expected pending=${{ matrix.expected }}, got '${{ steps.check.outputs.pending }}'"
+            exit 1
+          fi
+          if [[ "${{ steps.check.outputs.pending-since-days }}" != "${{ matrix.expected-age }}" ]]; then
+            echo "::error::Expected pending-since-days=${{ matrix.expected-age }}, got '${{ steps.check.outputs.pending-since-days }}'"
             exit 1
           fi
