@@ -34,4 +34,4 @@ runs:
     - name: "Check for unreleased changes"
       id: check
       shell: bash
-      run: $GITHUB_ACTION_PATH/scripts/check_pending_release.sh "${{ inputs.ignore }}"
+      run: python3 $GITHUB_ACTION_PATH/scripts/check_pending_release.py "${{ inputs.ignore }}"
