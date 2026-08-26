@@ -18,18 +18,24 @@ jobs:
           - scenario: unreleased-changes
             expected: 'true'
             expected-age: '0'
+            expected-commits: '1'
           - scenario: old-unreleased-changes
             expected: 'true'
             expected-age: '10'
+            # the later CI change must not be counted
+            expected-commits: '1'
           - scenario: ignored-changes-only
             expected: 'false'
             expected-age: '0'
+            expected-commits: '0'
           - scenario: no-tags
             expected: 'true'
             expected-age: '30'
+            expected-commits: '0'
           - scenario: nothing-since-tag
             expected: 'false'
             expected-age: '0'
+            expected-commits: '0'
 
     steps:
       - uses: actions/checkout@v7
@@ -73,6 +79,10 @@ jobs:
               export GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE"
               git commit -q -am "Change source"
               unset GIT_AUTHOR_DATE GIT_COMMITTER_DATE
+
+              echo "on: push" > .github/workflows/CI.yml
+              git add .github
+              git commit -q -m "Change CI"
               ;;
             ignored-changes-only)
               git tag v1.0.0
@@ -93,5 +103,9 @@ jobs:
           fi
           if [[ "${{ steps.check.outputs.pending-since-days }}" != "${{ matrix.expected-age }}" ]]; then
             echo "::error::Expected pending-since-days=${{ matrix.expected-age }}, got '${{ steps.check.outputs.pending-since-days }}'"
+            exit 1
+          fi
+          if [[ "${{ steps.check.outputs.commits }}" != "${{ matrix.expected-commits }}" ]]; then
+            echo "::error::Expected commits=${{ matrix.expected-commits }}, got '${{ steps.check.outputs.commits }}'"
             exit 1
           fi

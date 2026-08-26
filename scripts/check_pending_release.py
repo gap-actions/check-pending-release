@@ -25,11 +25,39 @@ import uuid
 SECONDS_PER_DAY = 86400
 
 
+def fail(message):
+    """Abort with an error the GitHub actions log highlights."""
+    print(f"::error::{message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def run_git(*args):
+    """Run a git command, leaving it to the caller to handle failure."""
+    return subprocess.run(["git", *args], capture_output=True, text=True)
+
+
 def git(*args):
-    """Run a git command and return its output."""
-    return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=True
-    ).stdout
+    """Run a git command and return its output, aborting if it fails."""
+    result = run_git(*args)
+    if result.returncode != 0:
+        fail(f"`git {' '.join(args)}` failed: {result.stderr.strip()}")
+
+    return result.stdout
+
+
+def check_repository():
+    """Refuse to answer if the checkout cannot support the question.
+
+    A shallow checkout - what `actions/checkout` produces by default - has
+    neither the tags nor the history this check needs, and would silently look
+    like a repository that never had a release.
+    """
+    if run_git("rev-parse", "--git-dir").returncode != 0:
+        fail("Not a git repository; this action must run after actions/checkout.")
+
+    if git("rev-parse", "--is-shallow-repository").strip() == "true":
+        fail("Shallow checkout: tags and history are missing. "
+             "Check out with `fetch-depth: 0`.")
 
 
 def exclude_pathspecs(raw_ignore_list):
@@ -46,11 +74,13 @@ def exclude_pathspecs(raw_ignore_list):
 
 
 def latest_tag():
-    """The most recent tag reachable from HEAD, or None if there is none."""
-    try:
-        return git("describe", "--tags", "--abbrev=0").strip()
-    except subprocess.CalledProcessError:
-        return None
+    """The most recent tag reachable from HEAD, or None if there is none.
+
+    `git describe` also fails when there is no tag, which is not an error here.
+    """
+    result = run_git("describe", "--tags", "--abbrev=0")
+
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def days_since(timestamp):
@@ -88,13 +118,10 @@ def pending_age_days(revisions, pathspecs):
 
 def write_outputs(outputs):
     """Report the results as GitHub action outputs."""
+    # `files` can hold several lines, so every value is passed in the heredoc
+    # form, with a delimiter that cannot occur inside it.
     lines = []
     for name, value in outputs.items():
-        if "\n" not in str(value):
-            lines.append(f"{name}={value}")
-            continue
-
-        # Multi-line values need a delimiter that cannot occur inside them.
         delimiter = f"ghadelim_{uuid.uuid4().hex}"
         lines.append(f"{name}<<{delimiter}\n{value}\n{delimiter}")
 
@@ -132,6 +159,8 @@ def append_to_file(env_var, text, fallback=None):
 
 
 def main():
+    check_repository()
+
     pathspecs = exclude_pathspecs(sys.argv[1] if len(sys.argv) > 1 else "")
 
     tag = latest_tag()
@@ -144,7 +173,7 @@ def main():
     if files:
         revisions = "HEAD" if tag is None else f"{tag}..HEAD"
         if tag is not None:
-            commits = int(git("rev-list", "--count", revisions))
+            commits = int(git("rev-list", "--count", revisions, "--", *pathspecs))
 
         # Fall back to the tag age in the rare case that only a merge commit
         # introduced the pending changes.

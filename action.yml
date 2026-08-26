@@ -19,7 +19,7 @@ outputs:
     description: "Newline-separated list of files changed since that tag, ignored paths removed"
     value: ${{ steps.check.outputs.files }}
   commits:
-    description: "Number of commits since that tag, 0 if there is no pending release"
+    description: "Number of commits since that tag which changed non-ignored files, 0 if there is no pending release"
     value: ${{ steps.check.outputs.commits }}
   age-days:
     description: "Age of that tag in days, 0 if the repository has no tags"

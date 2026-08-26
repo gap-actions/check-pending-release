@@ -90,7 +90,7 @@ which age warrants a report, nor reports anything. It needs the full history and
 - `pending`: `'true'` if there are unreleased changes, `'false'` otherwise.
 - `since-tag`: the most recent tag the check compared against, empty if the repository has no tags.
 - `files`: newline-separated list of files changed since that tag, ignored paths removed.
-- `commits`: number of commits since that tag, `0` if there is no pending release.
+- `commits`: number of commits since that tag which changed non-ignored files, `0` if there is no pending release.
 - `age-days`: age of that tag in days, `0` if the repository has no tags.
 - `pending-since-days`: age in days of the oldest unreleased change, `0` if there is no pending release.
 
