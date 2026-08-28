@@ -6,8 +6,8 @@ ignores changes to paths that do not warrant a release, such as CI
 configuration.
 
 It comes with a [reusable workflow](#reusable-workflow) which runs the check on
-a schedule and, once the unreleased changes have sat around for a week, tracks
-them in a GitHub issue. Most packages want that
+a schedule and, once nobody has touched the unreleased changes for a week,
+tracks them in a GitHub issue. Most packages want that
 workflow; use the action directly only if you need a different reaction to a
 pending release.
 
@@ -33,10 +33,12 @@ jobs:
     uses: gap-actions/check-pending-release/.github/workflows/reusable.yml@v1
 ```
 
-Changes are reported only once the oldest of them is at least `min-age-days`
-old, so that work in progress is not flagged right away. While such changes
-exist, the workflow keeps a single open issue up to date; once a release has
-been made, it comments on that issue and closes it.
+Changes are reported only once they have been left untouched for
+`min-quiet-days`, so that a rework spanning several weeks is not flagged while
+it is still going on; what gets reported is work someone walked away from.
+Changes to ignored paths do not reset that clock. While such changes exist, the
+workflow keeps a single open issue up to date; once a release has been made, it
+comments on that issue and closes it.
 
 ### Inputs
 
@@ -45,8 +47,8 @@ All of the following inputs are optional.
 - `ignore`:
   - Newline- or comma-separated list of path prefixes whose changes do not warrant a release. A prefix also covers everything below it, so `.github` ignores `.github/workflows/CI.yml`.
   - default: `".github\n.gitignore"`
-- `min-age-days`:
-  - Only report a pending release once its oldest change is this many days old.
+- `min-quiet-days`:
+  - Only report a pending release once its most recent change is this many days old.
   - default: `7`
 - `issue-title`:
   - Title of the tracking issue.
@@ -92,7 +94,7 @@ which age warrants a report, nor reports anything. It needs the full history and
 - `files`: newline-separated list of files changed since that tag, ignored paths removed.
 - `commits`: number of commits since that tag which changed non-ignored files, `0` if there is no pending release.
 - `age-days`: age of that tag in days, `0` if the repository has no tags.
-- `pending-since-days`: age in days of the oldest unreleased change, `0` if there is no pending release.
+- `quiet-days`: days since the most recent unreleased change, `0` if there is no pending release.
 
 A repository without any tags counts as pending, because nothing in it was ever
 released.

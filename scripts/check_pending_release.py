@@ -11,9 +11,9 @@ The ignore list is a newline- and/or comma-separated list of path prefixes, so
 `.github` also covers `.github/workflows/CI.yml`.
 
 Results are reported via $GITHUB_OUTPUT (pending, since-tag, files, commits,
-age-days, pending-since-days) and summarized in $GITHUB_STEP_SUMMARY. Whether a
-given age warrants a notification is policy and thus left to the caller; this
-script only reports the facts.
+age-days, quiet-days) and summarized in $GITHUB_STEP_SUMMARY. Whether a given
+age warrants a notification is policy and thus left to the caller; this script
+only reports the facts.
 """
 
 import os
@@ -100,20 +100,22 @@ def unreleased_files(tag, pathspecs):
     return [path for path in output.split("\0") if path]
 
 
-def pending_age_days(revisions, pathspecs):
-    """Age in days of the oldest commit in `revisions` touching a relevant file.
+def quiet_days(revisions, pathspecs):
+    """Days since the last commit in `revisions` touching a relevant file.
 
-    This is how long changes have been waiting for a release, as opposed to how
-    long ago the last release was. Returns None if there is no such commit;
-    `git log` describes merge commits by their parents, so that can happen even
-    when files did change.
+    Work in progress keeps resetting this, so it measures how long the pending
+    changes have been left alone rather than how long they have existed. Commits
+    to ignored paths do not count, so a CI tweak does not buy another week.
+
+    Returns None if there is no such commit; `git log` describes merge commits
+    by their parents, so that can happen even when files did change.
     """
     timestamps = git("log", "--format=%ct", revisions, "--", *pathspecs).split()
     if not timestamps:
         return None
 
     # `git log` reports the most recent commit first.
-    return days_since(int(timestamps[-1]))
+    return days_since(int(timestamps[0]))
 
 
 def write_outputs(outputs):
@@ -128,7 +130,7 @@ def write_outputs(outputs):
     append_to_file("GITHUB_OUTPUT", "\n".join(lines) + "\n", fallback=sys.stdout)
 
 
-def write_summary(tag, files, commits, age_days, pending_since_days):
+def write_summary(tag, files, commits, age_days, days_quiet):
     """Report the results in human readable form."""
     if not files:
         text = f"No pending release: no relevant changes since `{tag or '<no tag>'}`.\n"
@@ -137,7 +139,7 @@ def write_summary(tag, files, commits, age_days, pending_since_days):
     else:
         text = (
             f"Pending release: {commits} commit(s) since `{tag}` ({age_days} days ago),"
-            f" the oldest of them {pending_since_days} days old.\n"
+            f" the last of them {days_quiet} days ago.\n"
         )
 
     if files:
@@ -169,7 +171,7 @@ def main():
     files = unreleased_files(tag, pathspecs)
 
     commits = 0
-    pending_since_days = 0
+    days_quiet = 0
     if files:
         revisions = "HEAD" if tag is None else f"{tag}..HEAD"
         if tag is not None:
@@ -177,9 +179,9 @@ def main():
 
         # Fall back to the tag age in the rare case that only a merge commit
         # introduced the pending changes.
-        pending_since_days = pending_age_days(revisions, pathspecs)
-        if pending_since_days is None:
-            pending_since_days = age_days
+        days_quiet = quiet_days(revisions, pathspecs)
+        if days_quiet is None:
+            days_quiet = age_days
 
     write_outputs(
         {
@@ -187,11 +189,11 @@ def main():
             "since-tag": tag or "",
             "commits": commits,
             "age-days": age_days,
-            "pending-since-days": pending_since_days,
+            "quiet-days": days_quiet,
             "files": "\n".join(files),
         }
     )
-    write_summary(tag, files, commits, age_days, pending_since_days)
+    write_summary(tag, files, commits, age_days, days_quiet)
 
 
 if __name__ == "__main__":

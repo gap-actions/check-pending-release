@@ -18,8 +18,8 @@ on:
         default: |
           .github
           .gitignore
-      min-age-days:
-        description: "Only report a pending release once its oldest change is this many days old"
+      min-quiet-days:
+        description: "Only report a pending release once its most recent change is this many days old"
         type: number
         required: false
         default: 7
@@ -61,8 +61,8 @@ jobs:
         uses: actions/github-script@v9
         env:
           PENDING: ${{ steps.check.outputs.pending }}
-          PENDING_SINCE_DAYS: ${{ steps.check.outputs.pending-since-days }}
-          MIN_AGE_DAYS: ${{ inputs.min-age-days }}
+          QUIET_DAYS: ${{ steps.check.outputs.quiet-days }}
+          MIN_QUIET_DAYS: ${{ inputs.min-quiet-days }}
           SINCE_TAG: ${{ steps.check.outputs.since-tag }}
           COMMITS: ${{ steps.check.outputs.commits }}
           AGE_DAYS: ${{ steps.check.outputs.age-days }}
@@ -75,14 +75,14 @@ jobs:
             const { owner, repo } = context.repo;
             const label = process.env.ISSUE_LABEL;
             const pending = process.env.PENDING === 'true';
-            const pendingSince = Number(process.env.PENDING_SINCE_DAYS);
-            const minAge = Number(process.env.MIN_AGE_DAYS);
+            const quietDays = Number(process.env.QUIET_DAYS);
+            const minQuietDays = Number(process.env.MIN_QUIET_DAYS);
 
-            // Fresh changes are none of our business yet: give maintainers
-            // time to finish what they started before nagging them.
-            if (pending && pendingSince < minAge) {
-              core.info(`Pending changes are only ${pendingSince} day(s) old, ` +
-                        `reporting them from ${minAge} day(s) on.`);
+            // Work still in progress is none of our business: a long refactor
+            // may well take weeks, and only stalling it should be reported.
+            if (pending && quietDays < minQuietDays) {
+              core.info(`Pending changes were last touched ${quietDays} day(s) ago, ` +
+                        `reporting them after ${minQuietDays} quiet day(s).`);
               return;
             }
 
@@ -113,8 +113,8 @@ jobs:
 
             const summary = tag
               ? `The last release was \`${tag}\`, ${process.env.AGE_DAYS} days ago. Since then ` +
-                `${process.env.COMMITS} commit(s) changed ${files.length} file(s), the oldest ` +
-                `of these changes being ${pendingSince} days old:`
+                `${process.env.COMMITS} commit(s) changed ${files.length} file(s), the last ` +
+                `of them ${quietDays} days ago:`
               : `This repository has no tags, so nothing was ever released. ` +
                 `It contains ${files.length} file(s):`;
 
@@ -128,8 +128,8 @@ jobs:
               '',
               'Please make a release, or close this issue if the changes do not warrant one.',
               'Paths that should never trigger this check can be added to the `ignore`',
-              'input of the workflow in `.github/workflows/`, and `min-age-days` controls',
-              'how long changes may sit unreleased before they are reported.',
+              'input of the workflow in `.github/workflows/`, and `min-quiet-days` controls',
+              'how long changes must lie untouched before they are reported.',
               '',
               `<sub>Reported by [check-pending-release](https://github.com/gap-actions/check-pending-release) on ${new Date().toISOString().slice(0, 10)}.</sub>`,
             ].join('\n');

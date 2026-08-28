@@ -18,24 +18,29 @@ jobs:
         include:
           - scenario: unreleased-changes
             expected: 'true'
-            expected-age: '0'
+            expected-quiet: '0'
             expected-commits: '1'
           - scenario: old-unreleased-changes
             expected: 'true'
-            expected-age: '10'
-            # the later CI change must not be counted
+            # the later CI change must reset neither the clock nor the count
+            expected-quiet: '10'
             expected-commits: '1'
+          - scenario: resumed-work
+            expected: 'true'
+            # work in progress resets the clock to its most recent commit
+            expected-quiet: '2'
+            expected-commits: '2'
           - scenario: ignored-changes-only
             expected: 'false'
-            expected-age: '0'
+            expected-quiet: '0'
             expected-commits: '0'
           - scenario: no-tags
             expected: 'true'
-            expected-age: '30'
+            expected-quiet: '30'
             expected-commits: '0'
           - scenario: nothing-since-tag
             expected: 'false'
-            expected-age: '0'
+            expected-quiet: '0'
             expected-commits: '0'
 
     steps:
@@ -73,6 +78,19 @@ jobs:
               echo "2" > src/foo.c
               git commit -q -am "Change source"
               ;;
+            resumed-work)
+              git tag v1.0.0
+              echo "2" > src/foo.c
+              export GIT_AUTHOR_DATE="$(date -u -d '20 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+              export GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE"
+              git commit -q -am "Start reworking"
+
+              echo "3" > src/foo.c
+              export GIT_AUTHOR_DATE="$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+              export GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE"
+              git commit -q -am "Continue reworking"
+              unset GIT_AUTHOR_DATE GIT_COMMITTER_DATE
+              ;;
             old-unreleased-changes)
               git tag v1.0.0
               echo "2" > src/foo.c
@@ -102,8 +120,8 @@ jobs:
             echo "::error::Expected pending=${{ matrix.expected }}, got '${{ steps.check.outputs.pending }}'"
             exit 1
           fi
-          if [[ "${{ steps.check.outputs.pending-since-days }}" != "${{ matrix.expected-age }}" ]]; then
-            echo "::error::Expected pending-since-days=${{ matrix.expected-age }}, got '${{ steps.check.outputs.pending-since-days }}'"
+          if [[ "${{ steps.check.outputs.quiet-days }}" != "${{ matrix.expected-quiet }}" ]]; then
+            echo "::error::Expected quiet-days=${{ matrix.expected-quiet }}, got '${{ steps.check.outputs.quiet-days }}'"
             exit 1
           fi
           if [[ "${{ steps.check.outputs.commits }}" != "${{ matrix.expected-commits }}" ]]; then

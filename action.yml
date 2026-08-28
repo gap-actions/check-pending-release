@@ -24,9 +24,9 @@ outputs:
   age-days:
     description: "Age of that tag in days, 0 if the repository has no tags"
     value: ${{ steps.check.outputs.age-days }}
-  pending-since-days:
-    description: "Age in days of the oldest unreleased change, 0 if there is no pending release"
-    value: ${{ steps.check.outputs.pending-since-days }}
+  quiet-days:
+    description: "Days since the most recent unreleased change, 0 if there is no pending release"
+    value: ${{ steps.check.outputs.quiet-days }}
 
 runs:
   using: "composite"
