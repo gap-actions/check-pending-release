@@ -113,6 +113,8 @@ jobs:
 
       - id: check
         uses: ./this-action/
+        with:
+          open-issue: 'false'
 
       - name: "Verify outputs"
         run: |

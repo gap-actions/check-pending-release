@@ -1,6 +1,6 @@
 ---
 name: "Check for a pending GAP package release"
-description: "Checks whether the repository has commits that are not part of any release yet"
+description: "Reports commits that are not part of any release yet by opening a tracking issue"
 inputs:
   ignore:
     description: "Newline- or comma-separated list of path prefixes whose changes do not warrant a release"
@@ -8,6 +8,26 @@ inputs:
     default: |
       .github
       .gitignore
+  min-quiet-days:
+    description: "Only report a pending release once its most recent change is this many days old"
+    required: false
+    default: "7"
+  open-issue:
+    description: "Set to false to only compute the outputs, without touching any issue"
+    required: false
+    default: "true"
+  issue-title:
+    description: "Title of the tracking issue"
+    required: false
+    default: "Pending release"
+  issue-label:
+    description: "Label used to find the tracking issue again; created if missing"
+    required: false
+    default: "pending release"
+  max-files:
+    description: "Maximum number of changed files to list in the issue"
+    required: false
+    default: "50"
 outputs:
   pending:
     description: "'true' if there are unreleased changes, 'false' otherwise"
@@ -35,3 +55,94 @@ runs:
       id: check
       shell: bash
       run: python3 $GITHUB_ACTION_PATH/scripts/check_pending_release.py "${{ inputs.ignore }}"
+
+    # Anything but an explicit 'false' reports, so that a typo cannot silently
+    # turn the check into a no-op.
+    - name: "Open, update or close the tracking issue"
+      if: ${{ inputs.open-issue != 'false' }}
+      uses: actions/github-script@v9
+      env:
+        PENDING: ${{ steps.check.outputs.pending }}
+        QUIET_DAYS: ${{ steps.check.outputs.quiet-days }}
+        MIN_QUIET_DAYS: ${{ inputs.min-quiet-days }}
+        SINCE_TAG: ${{ steps.check.outputs.since-tag }}
+        COMMITS: ${{ steps.check.outputs.commits }}
+        AGE_DAYS: ${{ steps.check.outputs.age-days }}
+        FILES: ${{ steps.check.outputs.files }}
+        ISSUE_TITLE: ${{ inputs.issue-title }}
+        ISSUE_LABEL: ${{ inputs.issue-label }}
+        MAX_FILES: ${{ inputs.max-files }}
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const label = process.env.ISSUE_LABEL;
+          const pending = process.env.PENDING === 'true';
+          const quietDays = Number(process.env.QUIET_DAYS);
+          const minQuietDays = Number(process.env.MIN_QUIET_DAYS);
+
+          // Work still in progress is none of our business: a long refactor
+          // may well take weeks, and only stalling it should be reported.
+          if (pending && quietDays < minQuietDays) {
+            core.info(`Pending changes were last touched ${quietDays} day(s) ago, ` +
+                      `reporting them after ${minQuietDays} quiet day(s).`);
+            return;
+          }
+
+          // The label identifies our own issue, so we never open a second one.
+          const { data: issues } = await github.rest.issues.listForRepo({
+            owner, repo, state: 'open', labels: label, per_page: 1,
+          });
+          const issue = issues[0];
+
+          if (!pending) {
+            if (issue) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: issue.number,
+                body: `All changes are released as of \`${process.env.SINCE_TAG}\`. Closing.`,
+              });
+              await github.rest.issues.update({
+                owner, repo, issue_number: issue.number, state: 'closed',
+              });
+            }
+            return;
+          }
+
+          const tag = process.env.SINCE_TAG;
+          const files = process.env.FILES.split('\n').filter(Boolean);
+          const maxFiles = Number(process.env.MAX_FILES);
+          const shown = files.slice(0, maxFiles);
+          const omitted = files.length - shown.length;
+
+          const summary = tag
+            ? `The last release was \`${tag}\`, ${process.env.AGE_DAYS} days ago. Since then ` +
+              `${process.env.COMMITS} commit(s) changed ${files.length} file(s), the last ` +
+              `of them ${quietDays} days ago:`
+            : `This repository has no tags, so nothing was ever released. ` +
+              `It contains ${files.length} file(s):`;
+
+          const body = [
+            summary,
+            '',
+            '```',
+            ...shown,
+            ...(omitted > 0 ? [`... and ${omitted} more`] : []),
+            '```',
+            '',
+            'Please make a release, or close this issue if the changes do not warrant one.',
+            'Paths that should never trigger this check can be added to the `ignore`',
+            'input of the workflow in `.github/workflows/`, and `min-quiet-days` controls',
+            'how long changes must lie untouched before they are reported.',
+            '',
+            `<sub>Reported by [check-pending-release](https://github.com/gap-actions/check-pending-release) on ${new Date().toISOString().slice(0, 10)}.</sub>`,
+          ].join('\n');
+
+          if (issue) {
+            await github.rest.issues.update({
+              owner, repo, issue_number: issue.number, body,
+            });
+            return;
+          }
+
+          await github.rest.issues.create({
+            owner, repo, title: process.env.ISSUE_TITLE, body, labels: [label],
+          });
