@@ -24,6 +24,8 @@ name: Check for pending release
 on:
   schedule:
     - cron: '0 6 * * 1'   # every Monday at 06:00 UTC
+  release:
+    types: [published]    # close the issue once a release is made
   workflow_dispatch:
 
 permissions:
@@ -39,6 +41,30 @@ jobs:
           fetch-depth: 0
       - uses: gap-actions/check-pending-release@v1
 ```
+
+### Closing the issue on release
+
+The `release` trigger above only fires for releases made by hand, because GitHub
+starts no workflow run from an event created with the default `GITHUB_TOKEN` -
+which is what [release-pkg](https://github.com/gap-actions/release-pkg) uses. To
+close the issue right away for those too, run the check as another job of the
+release workflow:
+
+```yaml
+  close-pending-release-issue:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gap-actions/check-pending-release@v1
+```
+
+Otherwise the next scheduled run closes it.
 
 ### Inputs
 
@@ -99,6 +125,8 @@ name: Check for pending release
 on:
   schedule:
     - cron: '0 6 * * 1'   # every Monday at 06:00 UTC
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
