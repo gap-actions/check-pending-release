@@ -10,6 +10,13 @@ on:
   workflow_dispatch:
 
 jobs:
+  # the decision what to do about the tracking issue
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: node --test scripts/
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -128,5 +135,10 @@ jobs:
           fi
           if [[ "${{ steps.check.outputs.commits }}" != "${{ matrix.expected-commits }}" ]]; then
             echo "::error::Expected commits=${{ matrix.expected-commits }}, got '${{ steps.check.outputs.commits }}'"
+            exit 1
+          fi
+          # a closed issue is judged against the time of the last change
+          if [[ "${{ matrix.expected }}" == "true" && -z "${{ steps.check.outputs.last-change-time }}" ]]; then
+            echo "::error::Expected last-change-time for a pending release, got none"
             exit 1
           fi
