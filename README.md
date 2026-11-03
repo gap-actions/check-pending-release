@@ -10,7 +10,8 @@ Changes are reported only once they have been left untouched for
 it is still going on; what gets reported is work someone walked away from.
 Changes to ignored paths do not reset that clock. While such changes exist, the
 action keeps a single open issue up to date; once a release has been made, it
-comments on that issue and closes it.
+comments on that issue and closes it. An issue you close yourself stays closed;
+see [Closing the issue yourself](#closing-the-issue-yourself).
 
 ## Usage
 
@@ -65,6 +66,21 @@ release workflow:
 ```
 
 Otherwise the next scheduled run closes it.
+
+### Closing the issue yourself
+
+Closing the tracking issue answers it, and the action respects the answer:
+
+- An issue closed as *completed*, the default, stays closed until further
+  changes are committed; those are then reported in a new issue.
+- An issue closed as *not planned* stays closed until the next release, however
+  many changes are committed meanwhile. Use this when you know a release will
+  not happen soon.
+
+To close an issue as not planned, click the arrow next to the "Close issue"
+button below the comment box, and choose "Close as not planned":
+
+<img src="./images/close_as_not_planned.png" width="560" alt="The 'Close as not planned' entry in the menu of the 'Close issue' button">
 
 ### Inputs
 
