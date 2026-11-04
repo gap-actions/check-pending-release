@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: node --test scripts/
+      - run: node --test scripts/report.test.js
 
   test:
     runs-on: ubuntu-latest

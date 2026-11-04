@@ -47,6 +47,12 @@ outputs:
   quiet-days:
     description: "Days since the most recent unreleased change, 0 if there is no pending release"
     value: ${{ steps.check.outputs.quiet-days }}
+  tag-time:
+    description: "Time of that tag in seconds since the epoch, empty if the repository has no tags"
+    value: ${{ steps.check.outputs.tag-time }}
+  last-change-time:
+    description: "Time of the most recent unreleased change in seconds since the epoch, empty if there is no pending release"
+    value: ${{ steps.check.outputs.last-change-time }}
 
 runs:
   using: "composite"

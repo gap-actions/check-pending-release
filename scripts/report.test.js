@@ -1,4 +1,4 @@
-// Run with `node --test scripts/`.
+// Run with `node --test scripts/report.test.js`.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { decide } = require('./report.js');
