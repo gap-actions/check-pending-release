@@ -84,6 +84,51 @@ button below the comment box, and choose "Close as not planned":
 
 <img src="./images/close_as_not_planned.png" width="560" alt="The 'Close as not planned' entry in the menu of the 'Close issue' button">
 
+### Configuration examples
+
+The [inputs](#inputs) go in a `with:` block under the step that uses the action.
+
+Ignore changes to more paths. Giving `ignore` replaces the default list, so
+repeat `.github` and `.gitignore`:
+
+```yaml
+      - uses: gap-actions/check-pending-release@v1
+        with:
+          ignore: |
+            .github
+            .gitignore
+            tst
+```
+
+Report changes only once they have been left untouched for 60 days:
+
+```yaml
+      - uses: gap-actions/check-pending-release@v1
+        with:
+          min-quiet-days: 60
+```
+
+Check once a month instead of every week, by changing the `schedule` trigger:
+
+```yaml
+on:
+  schedule:
+    - cron: '0 6 1 * *'   # on the first of each month at 06:00 UTC
+```
+
+Check only on demand, by removing the `schedule` trigger. Start the check from
+the Actions tab of the repository:
+
+```yaml
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+```
+
+Turn the check off by deleting `.github/workflows/check-pending-release.yml`,
+and the job running the action in the release workflow, if there is one.
+
 ### Inputs
 
 All of the following inputs are optional.
