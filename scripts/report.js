@@ -7,9 +7,9 @@
  * `issue` is the most recent issue with our label, open or closed, or null.
  * Times are in seconds since the epoch; `tagTime` is null if there is no tag.
  *
- * A closed issue is the maintainer's answer, so it is left alone until there
- * is something new to say: a change committed after the closing, or, if it was
- * closed as "not planned", a release made after the closing.
+ * After the issue was closed, a new one is opened only for a change committed
+ * after the closing; if it was closed as "not planned", only after a release
+ * made after the closing.
  */
 function decide({ pending, quietDays, minQuietDays, tagTime, lastChangeTime, issue }) {
   const open = issue !== null && issue.state === 'open';
@@ -66,8 +66,9 @@ function issueBody(env, quietDays) {
     '```',
     '',
     'Please make a release, or close this issue if the changes do not warrant one:',
-    'it then stays closed until further changes are committed. Close it as',
-    '*not planned* to hear nothing more until the next release; see',
+    'no new issue is then opened until further changes are committed. Close it as',
+    '*not planned* to get no new issue until the next release, even if further',
+    'changes are committed; see',
     '[Closing the issue yourself](https://github.com/gap-actions/check-pending-release#closing-the-issue-yourself).',
     'Paths that should never trigger this check can be added to the `ignore`',
     'input of the workflow in `.github/workflows/`, and `min-quiet-days` controls',
@@ -87,8 +88,8 @@ async function report({ github, context, core }) {
   const label = env.ISSUE_LABEL;
   const quietDays = Number(env.QUIET_DAYS);
 
-  // The label identifies our own issues; the most recent one carries the
-  // maintainer's latest answer, so closed ones count too.
+  // The label identifies our own issues. Closed ones count too: how the most
+  // recent one was closed decides whether to open a new one.
   const { data: issues } = await github.rest.issues.listForRepo({
     owner, repo, state: 'all', labels: label, sort: 'created', direction: 'desc',
     per_page: 1,
