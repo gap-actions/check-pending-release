@@ -84,6 +84,15 @@ def latest_tag():
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def tag_creation_time(tag):
+    """When `tag` was made: its own date if annotated, else that of its commit.
+
+    A release may tag a commit made long before, so the commit's date can
+    predate the release by weeks.
+    """
+    return int(git("for-each-ref", "--format=%(creatordate:unix)", f"refs/tags/{tag}"))
+
+
 def days_since(timestamp):
     return int((time.time() - timestamp) // SECONDS_PER_DAY)
 
@@ -168,7 +177,7 @@ def main():
     pathspecs = exclude_pathspecs(sys.argv[1] if len(sys.argv) > 1 else "")
 
     tag = latest_tag()
-    tag_time = None if tag is None else int(git("log", "-1", "--format=%ct", tag))
+    tag_time = None if tag is None else tag_creation_time(tag)
     age_days = 0 if tag_time is None else days_since(tag_time)
 
     files = unreleased_files(tag, pathspecs)

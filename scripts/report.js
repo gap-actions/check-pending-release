@@ -5,13 +5,14 @@
  * What to do about the tracking issue.
  *
  * `issue` is the most recent issue with our label, open or closed, or null.
- * Times are in seconds since the epoch; `tagTime` is null if there is no tag.
+ * Times are in seconds since the epoch; `releaseTime` is null if nothing was
+ * ever released.
  *
  * After the issue was closed, a new one is opened only for a change committed
  * after the closing; if it was closed as "not planned", only after a release
  * made after the closing.
  */
-function decide({ pending, quietDays, minQuietDays, tagTime, lastChangeTime, issue }) {
+function decide({ pending, quietDays, minQuietDays, releaseTime, lastChangeTime, issue }) {
   const open = issue !== null && issue.state === 'open';
 
   if (!pending) {
@@ -33,7 +34,7 @@ function decide({ pending, quietDays, minQuietDays, tagTime, lastChangeTime, iss
   }
 
   const closedTime = Date.parse(issue.closed_at) / 1000;
-  if (issue.state_reason === 'not_planned' && (tagTime === null || closedTime > tagTime)) {
+  if (issue.state_reason === 'not_planned' && (releaseTime === null || closedTime > releaseTime)) {
     return { action: 'none', why: 'the issue was closed as not planned, ' +
                                   'which holds until the next release' };
   }
@@ -82,6 +83,25 @@ function optionalTime(value) {
   return value ? Number(value) : null;
 }
 
+/**
+ * When the last release was made, or null if never.
+ *
+ * The tag alone can mislead: a lightweight tag only has the time of its
+ * commit, which may be long before the release that tagged it. So the most
+ * recent published GitHub release counts as well.
+ */
+async function lastReleaseTime(github, owner, repo, tagTime) {
+  const { data: releases } = await github.rest.repos.listReleases({
+    owner, repo, per_page: 10,
+  });
+  const published = releases
+    .filter((release) => !release.draft && release.published_at)
+    .map((release) => Date.parse(release.published_at) / 1000);
+
+  const times = [tagTime, ...published].filter((time) => time !== null);
+  return times.length > 0 ? Math.max(...times) : null;
+}
+
 async function report({ github, context, core }) {
   const env = process.env;
   const { owner, repo } = context.repo;
@@ -100,7 +120,7 @@ async function report({ github, context, core }) {
     pending: env.PENDING === 'true',
     quietDays,
     minQuietDays: Number(env.MIN_QUIET_DAYS),
-    tagTime: optionalTime(env.TAG_TIME),
+    releaseTime: await lastReleaseTime(github, owner, repo, optionalTime(env.TAG_TIME)),
     lastChangeTime: optionalTime(env.LAST_CHANGE_TIME),
     issue,
   });

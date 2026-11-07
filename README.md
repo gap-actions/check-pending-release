@@ -160,7 +160,7 @@ All of the following inputs are optional.
 - `commits`: number of commits since that tag which changed non-ignored files, `0` if there is no pending release.
 - `age-days`: age of that tag in days, `0` if the repository has no tags.
 - `quiet-days`: days since the most recent unreleased change, `0` if there is no pending release.
-- `tag-time`: time of that tag in seconds since the epoch, empty if the repository has no tags.
+- `tag-time`: time that tag was created in seconds since the epoch, empty if the repository has no tags.
 - `last-change-time`: time of the most recent unreleased change in seconds since the epoch, empty if there is no pending release.
 
 A repository without any tags counts as pending, because nothing in it was ever
