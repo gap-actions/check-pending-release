@@ -10,7 +10,9 @@ Changes are reported only once they have been left untouched for
 it is still going on; what gets reported is work someone walked away from.
 Changes to ignored paths do not reset that clock. While such changes exist, the
 action keeps a single open issue up to date; once a release has been made, it
-comments on that issue and closes it.
+comments on that issue and closes it. If you close the issue yourself, no new
+one is opened right away; see
+[Closing the issue yourself](#closing-the-issue-yourself).
 
 ## Usage
 
@@ -66,6 +68,67 @@ release workflow:
 
 Otherwise the next scheduled run closes it.
 
+### Closing the issue yourself
+
+You can also close the issue yourself. What happens next depends on how you
+close it:
+
+- Closed as *completed*, the default: no new issue is opened until further
+  changes are committed; those are then reported in a new issue.
+- Closed as *not planned*: no new issue is opened until the next release, even
+  if further changes are committed. Use this when you know a release will not
+  happen soon.
+
+To close an issue as not planned, click the arrow next to the "Close issue"
+button below the comment box, and choose "Close as not planned":
+
+<img src="./images/close_as_not_planned.png" width="560" alt="The 'Close as not planned' entry in the menu of the 'Close issue' button">
+
+### Configuration examples
+
+The [inputs](#inputs) go in a `with:` block under the step that uses the action.
+
+Ignore changes to more paths. Giving `ignore` replaces the default list, so
+repeat `.github` and `.gitignore`:
+
+```yaml
+      - uses: gap-actions/check-pending-release@v1
+        with:
+          ignore: |
+            .github
+            .gitignore
+            tst
+```
+
+Report changes only once they have been left untouched for 60 days:
+
+```yaml
+      - uses: gap-actions/check-pending-release@v1
+        with:
+          min-quiet-days: 60
+```
+
+Check once a month instead of every week, by changing the `schedule` trigger:
+
+```yaml
+on:
+  schedule:
+    - cron: '0 6 1 * *'   # on the first of each month at 06:00 UTC
+```
+
+Check only on demand, by removing the `schedule` trigger. Start the check from
+the Actions tab of the repository:
+
+```yaml
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+```
+
+Turn the check off by deleting `.github/workflows/check-pending-release.yml`,
+and the job running the action in the release workflow, if there is one.
+
 ### Inputs
 
 All of the following inputs are optional.
@@ -97,6 +160,8 @@ All of the following inputs are optional.
 - `commits`: number of commits since that tag which changed non-ignored files, `0` if there is no pending release.
 - `age-days`: age of that tag in days, `0` if the repository has no tags.
 - `quiet-days`: days since the most recent unreleased change, `0` if there is no pending release.
+- `tag-time`: time that tag was created in seconds since the epoch, empty if the repository has no tags.
+- `last-change-time`: time of the most recent unreleased change in seconds since the epoch, empty if there is no pending release.
 
 A repository without any tags counts as pending, because nothing in it was ever
 released.

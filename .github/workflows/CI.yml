@@ -10,6 +10,13 @@ on:
   workflow_dispatch:
 
 jobs:
+  # the decision what to do about the tracking issue
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: node --test scripts/report.test.js
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -42,6 +49,12 @@ jobs:
             expected: 'false'
             expected-quiet: '0'
             expected-commits: '0'
+          - scenario: annotated-tag
+            expected: 'true'
+            expected-quiet: '0'
+            expected-commits: '1'
+            # the release is as old as the tag, not as the commit it tags
+            expected-age: '0'
 
     steps:
       - uses: actions/checkout@v7
@@ -72,6 +85,11 @@ jobs:
               ;;
             nothing-since-tag)
               git tag v1.0.0
+              ;;
+            annotated-tag)
+              git tag -a v1.0.0 -m "Version 1.0.0"
+              echo "2" > src/foo.c
+              git commit -q -am "Change source"
               ;;
             unreleased-changes)
               git tag v1.0.0
@@ -128,5 +146,14 @@ jobs:
           fi
           if [[ "${{ steps.check.outputs.commits }}" != "${{ matrix.expected-commits }}" ]]; then
             echo "::error::Expected commits=${{ matrix.expected-commits }}, got '${{ steps.check.outputs.commits }}'"
+            exit 1
+          fi
+          if [[ -n "${{ matrix.expected-age }}" && "${{ steps.check.outputs.age-days }}" != "${{ matrix.expected-age }}" ]]; then
+            echo "::error::Expected age-days=${{ matrix.expected-age }}, got '${{ steps.check.outputs.age-days }}'"
+            exit 1
+          fi
+          # a closed issue is judged against the time of the last change
+          if [[ "${{ matrix.expected }}" == "true" && -z "${{ steps.check.outputs.last-change-time }}" ]]; then
+            echo "::error::Expected last-change-time for a pending release, got none"
             exit 1
           fi

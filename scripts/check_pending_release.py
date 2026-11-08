@@ -11,7 +11,8 @@ The ignore list is a newline- and/or comma-separated list of path prefixes, so
 `.github` also covers `.github/workflows/CI.yml`.
 
 Results are reported via $GITHUB_OUTPUT (pending, since-tag, files, commits,
-age-days, quiet-days) and summarized in $GITHUB_STEP_SUMMARY. Whether a given
+age-days, quiet-days, and for the issue handling tag-time and last-change-time
+in seconds since the epoch) and summarized in $GITHUB_STEP_SUMMARY. Whether a given
 age warrants a notification is policy and thus left to the caller; this script
 only reports the facts.
 """
@@ -83,6 +84,15 @@ def latest_tag():
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def tag_creation_time(tag):
+    """When `tag` was made: its own date if annotated, else that of its commit.
+
+    A release may tag a commit made long before, so the commit's date can
+    predate the release by weeks.
+    """
+    return int(git("for-each-ref", "--format=%(creatordate:unix)", f"refs/tags/{tag}"))
+
+
 def days_since(timestamp):
     return int((time.time() - timestamp) // SECONDS_PER_DAY)
 
@@ -100,12 +110,13 @@ def unreleased_files(tag, pathspecs):
     return [path for path in output.split("\0") if path]
 
 
-def quiet_days(revisions, pathspecs):
-    """Days since the last commit in `revisions` touching a relevant file.
+def last_change_time(revisions, pathspecs):
+    """Time of the last commit in `revisions` touching a relevant file.
 
-    Work in progress keeps resetting this, so it measures how long the pending
-    changes have been left alone rather than how long they have existed. Commits
-    to ignored paths do not count, so a CI tweak does not buy another week.
+    Work in progress keeps moving this, so the days since it measure how long
+    the pending changes have been left alone rather than how long they have
+    existed. Commits to ignored paths do not count, so a CI tweak does not buy
+    another week.
 
     Returns None if there is no such commit; `git log` describes merge commits
     by their parents, so that can happen even when files did change.
@@ -115,7 +126,7 @@ def quiet_days(revisions, pathspecs):
         return None
 
     # `git log` reports the most recent commit first.
-    return days_since(int(timestamps[0]))
+    return int(timestamps[0])
 
 
 def write_outputs(outputs):
@@ -166,22 +177,25 @@ def main():
     pathspecs = exclude_pathspecs(sys.argv[1] if len(sys.argv) > 1 else "")
 
     tag = latest_tag()
-    age_days = 0 if tag is None else days_since(int(git("log", "-1", "--format=%ct", tag)))
+    tag_time = None if tag is None else tag_creation_time(tag)
+    age_days = 0 if tag_time is None else days_since(tag_time)
 
     files = unreleased_files(tag, pathspecs)
 
     commits = 0
     days_quiet = 0
+    last_change = None
     if files:
         revisions = "HEAD" if tag is None else f"{tag}..HEAD"
         if tag is not None:
             commits = int(git("rev-list", "--count", revisions, "--", *pathspecs))
 
-        # Fall back to the tag age in the rare case that only a merge commit
+        # Fall back to the tag in the rare case that only a merge commit
         # introduced the pending changes.
-        days_quiet = quiet_days(revisions, pathspecs)
-        if days_quiet is None:
-            days_quiet = age_days
+        last_change = last_change_time(revisions, pathspecs)
+        if last_change is None:
+            last_change = tag_time
+        days_quiet = age_days if last_change is None else days_since(last_change)
 
     write_outputs(
         {
@@ -190,6 +204,8 @@ def main():
             "commits": commits,
             "age-days": age_days,
             "quiet-days": days_quiet,
+            "tag-time": "" if tag_time is None else tag_time,
+            "last-change-time": "" if last_change is None else last_change,
             "files": "\n".join(files),
         }
     )
